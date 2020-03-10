@@ -129,6 +129,9 @@ class Traverser
                     }
                 }
             }
+            else {
+                throw new \Exception("Could not call exit handler for ".$node->getType());
+            }
         }
 
         if ($traverseChildren && $continueTraversing) {
@@ -140,6 +143,9 @@ class Traverser
 
             if (is_callable($callback)) {
                 $callback($node);
+            }
+            else {
+                throw new \Exception("Could not call exit handler for ".$node->getType());
             }
         }
         
