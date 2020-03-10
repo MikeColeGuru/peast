@@ -71,8 +71,12 @@ class Traverser
      * 
      * @return Syntax\Node\Node
      */
-    public function traverse(Syntax\Node\Node $node)
+    public function traverse(Syntax\Node\Node $node, $handler = false)
     {
+        if (is_array($handler)) {
+            $this->functions = $handler;
+        }
+    
         $this->execFunctions($node);
         return $node;
     }
@@ -92,7 +96,9 @@ class Traverser
         $traverseChildren = true;
         $continueTraversing = true;
         
-        foreach ($this->functions as $fn) {
+        foreach ($this->functions as $type => $fn) {
+            if (is_string($type) && $node->getType() != $type) continue;
+
             $ret = $fn($node);
             if ($ret) {
                 if (is_array($ret) && $ret[0] instanceof Syntax\Node\Node) {
@@ -174,4 +180,5 @@ class Traverser
         
         return $continue;
     }
+
 }
