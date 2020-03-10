@@ -74,13 +74,124 @@ class Traverser
     public function traverse(Syntax\Node\Node $node, $handler = false)
     {
         if (is_array($handler)) {
-            $this->functions = $handler;
+            $this->execFunctionsWithHandler($node, $handler);
         }
-    
-        $this->execFunctions($node);
+        else {
+            $this->execFunctions($node);
+        }
         return $node;
     }
     
+    /**
+     * Executes all functions on the given node and, if required, starts
+     * traversing its children. The returned value is an array where the first
+     * value is the node or null if it has been removed and the second value is
+     * a boolean indicating if the traverser must continue the traversing or not
+     * 
+     * @param Syntax\Node\Node  $node   Node
+     * 
+     * @return array
+     */
+    protected function execFunctionsWithHandler($node, &$handler)
+    {
+        $traverseChildren = true;
+        $continueTraversing = true;
+        
+        if (isset($handler['enter'])) {
+            $callback = $handler['enter'][$node->getType()] ?? false;
+
+            if (is_callable($callback)) {
+                $ret = $callback($node);
+                if ($ret) {
+                    if (is_array($ret) && $ret[0] instanceof Syntax\Node\Node) {
+                        $node = $ret[0];
+                        if (isset($ret[1]) && is_numeric($ret[1])) {
+                            if ($ret[1] & self::DONT_TRAVERSE_CHILD_NODES) {
+                                $traverseChildren = false;
+                            }
+                            if ($ret[1] & self::STOP_TRAVERSING) {
+                                $continueTraversing = false;
+                            }
+                        }
+                    } elseif ($ret instanceof Syntax\Node\Node) {
+                        $node = $ret;
+                    } elseif (is_numeric($ret)) {
+                        if ($ret & self::DONT_TRAVERSE_CHILD_NODES) {
+                            $traverseChildren = false;
+                        }
+                        if ($ret & self::STOP_TRAVERSING) {
+                            $continueTraversing = false;
+                        }
+                        if ($ret & self::REMOVE_NODE) {
+                            $node = null;
+                            $traverseChildren = false;
+                        }
+                    }
+                }
+            }
+        }
+
+        if ($traverseChildren && $continueTraversing) {
+            $continueTraversing = $this->traverseChildren($node, $handler);
+        }
+
+        if (isset($handler['exit'])) {
+            $callback = $handler['exit'][$node->getType()] ?? false;
+
+            if (is_callable($callback)) {
+                $callback($node);
+            }
+        }
+        
+        return array($node, $continueTraversing);
+    }
+    
+    /**
+     * Traverses node children. It returns a boolena indicating if the
+     * traversing must continue or not
+     * 
+     * @param Syntax\Node\Node  $node   Node
+     * 
+     * @return bool
+     */
+    protected function traverseChildrenWithHandler(Syntax\Node\Node $node, &$handler)
+    {
+        $continue = true;
+        
+        foreach (Syntax\Utils::getNodeProperties($node, true) as $prop) {
+            $ucProp = ucfirst($prop);
+            $getter = "get$ucProp";
+            $setter = "set$ucProp";
+            $child = $node->$getter();
+            if (!$child) {
+                continue;
+            } elseif (is_array($child)) {
+                $newChildren = array();
+                foreach ($child as $c) {
+                    if (!$c || !$continue) {
+                        $newChildren[] = $c;
+                    } else {
+                        list($c, $continue) = $this->execFunctionsWithHandler($c, $handler);
+                        if ($c) {
+                            $newChildren[] = $c;
+                        }
+                    }
+                }
+                $node->$setter($newChildren);
+            } else {
+                list($child, $continue) = $this->execFunctionsWithHandler($child, $handler);
+                $node->$setter($child);
+            }
+            
+            if (!$continue) {
+                break;
+            }
+        }
+        
+        return $continue;
+    }
+
+
     /**
      * Executes all functions on the given node and, if required, starts
      * traversing its children. The returned value is an array where the first
@@ -96,9 +207,7 @@ class Traverser
         $traverseChildren = true;
         $continueTraversing = true;
         
-        foreach ($this->functions as $type => $fn) {
-            if (is_string($type) && $node->getType() != $type) continue;
-
+        foreach ($this->functions as $fn) {
             $ret = $fn($node);
             if ($ret) {
                 if (is_array($ret) && $ret[0] instanceof Syntax\Node\Node) {
@@ -180,5 +289,4 @@ class Traverser
         
         return $continue;
     }
-
 }
